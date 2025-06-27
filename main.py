@@ -15,7 +15,7 @@ def main():
                 break
 
             result = DeepFace.analyze(frame, actions=['age'], enforce_detection=False)
-            age = result.get('age', 'N/A')
+            age = result[0]['age']
 
             cv2.putText(
                 frame,
