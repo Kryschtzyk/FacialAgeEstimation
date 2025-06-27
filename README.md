@@ -1,25 +1,19 @@
-## AWS Amplify Next.js (App Router) Starter Template
+# Age Estimation App
 
-This repository provides a starter template for creating applications using Next.js (App Router) and AWS Amplify, emphasizing easy setup for authentication, API, and database capabilities.
+This small Python application uses the [DeepFace](https://github.com/serengil/deepface) library to estimate the age from a webcam stream. It opens a window, reads frames from the default camera and overlays the estimated age. No images are stored on disk; they are processed directly in memory.
 
-## Overview
+## Requirements
 
-This template equips you with a foundational Next.js application integrated with AWS Amplify, streamlined for scalability and performance. It is ideal for developers looking to jumpstart their project with pre-configured AWS services like Cognito, AppSync, and DynamoDB.
+Install the dependencies into a virtual environment (recommended):
 
-## Features
+```bash
+pip install -r requirements.txt
+```
 
-- **Authentication**: Setup with Amazon Cognito for secure user authentication.
-- **API**: Ready-to-use GraphQL endpoint with AWS AppSync.
-- **Database**: Real-time database powered by Amazon DynamoDB.
+## Running
 
-## Deploying to AWS
+```bash
+python main.py
+```
 
-For detailed instructions on deploying your application, refer to the [deployment section](https://docs.amplify.aws/nextjs/start/quickstart/nextjs-app-router-client-components/#deploy-a-fullstack-app-to-aws) of our documentation.
-
-## Security
-
-See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more information.
-
-## License
-
-This library is licensed under the MIT-0 License. See the LICENSE file.
+Press `q` to quit the application.
