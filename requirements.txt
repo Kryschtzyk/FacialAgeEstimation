@@ -1,2 +1,5 @@
-deepface
-opencv-python-headless
+flask==2.3.3
+opencv-python==4.8.0
+deepface==0.0.79
+numpy==1.24.3
+pillow==10.0.0

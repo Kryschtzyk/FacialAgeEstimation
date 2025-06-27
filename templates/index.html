@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altersschätzung</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        #video {
+            width: 100%;
+            max-width: 640px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            display: block;
+            margin: 0 auto 20px;
+        }
+        .progress-container {
+            position: relative;
+            width: 120px;
+            height: 120px;
+            margin: 20px auto;
+        }
+        .progress-circle {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+        .controls {
+            text-align: center;
+            margin: 20px 0;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .start-btn { 
+            background: #4CAF50; 
+            color: white; 
+        }
+        .reset-btn { 
+            background: #f44336; 
+            color: white; 
+        }
+        .status {
+            text-align: center;
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+            transition: all 0.3s ease;
+        }
+        .status.processing { background: #e3f2fd; }
+        .status.success { background: #e8f5e8; }
+        .status.error { background: #ffebee; }
+        .result-container {
+            text-align: center;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 10px;
+            background: #e8f5e8;
+            display: none;
+        }
+        .result-age {
+            font-size: 40px;
+            font-weight: bold;
+            color: #2c3e50;
+            margin: 10px 0;
+        }
+        .stats {
+            font-size: 12px;
+            color: #666;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 Web-Altersschätzung</h1>
+        
+        <video id="video" autoplay muted></video>
+        <canvas id="canvas" style="display: none;"></canvas>
+        
+        <div class="progress-container">
+            <svg class="progress-circle" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="45" fill="transparent" stroke="#ddd" stroke-width="10"></circle>
+                <circle id="progress-indicator" cx="50" cy="50" r="45" fill="transparent" stroke="#4CAF50" stroke-width="10" 
+                        stroke-dasharray="283" stroke-dashoffset="283" transform="rotate(-90 50 50)"></circle>
+                <text id="progress-text" x="50" y="55" text-anchor="middle" font-size="18" font-weight="bold">0/8</text>
+            </svg>
+        </div>
+        
+        <div id="status" class="status">
+            Klicken Sie auf "Start" um zu beginnen
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn" class="start-btn">Start</button>
+            <button id="resetBtn" class="reset-btn">Reset</button>
+        </div>
+        
+        <div id="result" class="result-container">
+            <h2>Geschätztes Alter:</h2>
+            <div id="age-result" class="result-age">--</div>
+            <div id="result-details">Basierend auf 8 gültigen Frames</div>
+            <div id="stats" class="stats"></div>
+        </div>
+    </div>
+
+    <script>
+        let video, canvas, ctx;
+        let processing = false;
+        let sessionId = Math.random().toString(36).substr(2, 9);
+        let intervalId;
+        let frameCount = 0;
+
+        async function initCamera() {
+            video = document.getElementById('video');
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: 640, height: 480 } 
+                });
+                video.srcObject = stream;
+                updateStatus('Kamera bereit. Klicken Sie auf "Start"');
+            } catch (err) {
+                updateStatus('Kamera-Zugriff verweigert. Bitte erlauben Sie den Zugriff.', 'error');
+                console.error('Kamera-Fehler:', err);
+            }
+        }
+
+        function captureFrame() {
+            if (!video.videoWidth) return null;
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            return canvas.toDataURL('image/jpeg', 0.8);
+        }
+
+        async function processFrame() {
+            if (!processing) return;
+            
+            const imageData = captureFrame();
+            if (!imageData) return;
+            
+            try {
+                const response = await fetch('/process_frame', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: imageData,
+                        session_id: sessionId
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Netzwerkfehler');
+                }
+                
+                const result = await response.json();
+                handleResult(result);
+                
+            } catch (err) {
+                updateStatus('Verbindungsfehler: ' + err.message, 'error');
+                console.error('Fetch-Fehler:', err);
+            }
+        }
+
+        function handleResult(result) {
+            console.log('Ergebnis:', result);
+            
+            switch(result.status) {
+                case 'processing':
+                    updateProgress(result.frames_collected, 8);
+                    updateStatus(`Sammle Frames... (${result.frames_collected}/8)`, 'processing');
+                    
+                    // Statistiken anzeigen
+                    if (result.attempted) {
+                        const successRate = result.attempted > 0 
+                            ? Math.round(((result.attempted - result.rejected) / result.attempted) * 100) 
+                            : 0;
+                        document.getElementById('stats').innerHTML = 
+                            `Erfolgsrate: ${successRate}% (${result.attempted-result.rejected}/${result.attempted}) | Zeit: ${result.elapsed.toFixed(1)}s`;
+                    }
+                    break;
+                    
+                case 'complete':
+                    updateProgress(8, 8);
+                    updateStatus(`Analyse erfolgreich abgeschlossen!`, 'success');
+                    stopProcessing();
+                    showResult(result.age, result.frame_count, result);
+                    break;
+                    
+                case 'failed':
+                    updateStatus(result.reason, 'error');
+                    stopProcessing();
+                    document.getElementById('stats').innerHTML = 
+                        `Versuche: ${result.attempted}, Abgelehnt: ${result.rejected}, Zeit: ${result.elapsed.toFixed(1)}s`;
+                    break;
+                    
+                case 'invalid':
+                    updateStatus(result.reason, 'error');
+                    // Verarbeitung nicht stoppen, nur Feedback geben
+                    if (result.attempted) {
+                        document.getElementById('stats').innerHTML = 
+                            `Versuche: ${result.attempted}, Abgelehnt: ${result.rejected}, Gesammelt: ${result.frames_collected}/8`;
+                    }
+                    break;
+                    
+                case 'error':
+                    updateStatus('Fehler: ' + result.reason, 'error');
+                    // Bei schwerwiegenden Fehlern evtl. zurücksetzen
+                    if (result.reason.includes('DeepFace')) {
+                        // Weitermachen, könnte ein vorübergehender Fehler sein
+                    } else {
+                        stopProcessing();
+                    }
+                    break;
+            }
+        }
+
+        function updateProgress(current, total) {
+            const progressText = document.getElementById('progress-text');
+            const progressIndicator = document.getElementById('progress-indicator');
+            
+            progressText.textContent = `${current}/${total}`;
+            
+            // SVG-Kreis-Animation
+            const circumference = 2 * Math.PI * 45; // 2πr, r=45
+            const offset = circumference - (current / total) * circumference;
+            progressIndicator.style.strokeDashoffset = offset;
+            
+            // Farbe je nach Fortschritt
+            if (current === total) {
+                progressIndicator.style.stroke = '#4CAF50'; // Grün
+            } else if (current > 0) {
+                progressIndicator.style.stroke = '#2196F3'; // Blau
+            } else {
+                progressIndicator.style.stroke = '#9E9E9E'; // Grau
+            }
+        }
+
+        function updateStatus(message, type = '') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        function showResult(age, frameCount, data) {
+            const result = document.getElementById('result');
+            const ageResult = document.getElementById('age-result');
+            const resultDetails = document.getElementById('result-details');
+            const stats = document.getElementById('stats');
+            
+            ageResult.textContent = `${age} Jahre`;
+            resultDetails.textContent = `Basierend auf ${frameCount} gültigen Frames`;
+            
+            if (data && data.attempted) {
+                const successRate = Math.round(((data.attempted - data.rejected) / data.attempted) * 100);
+                stats.innerHTML = `Erfolgsrate: ${successRate}% (${data.attempted-data.rejected}/${data.attempted}) | Gesamtzeit: ${data.elapsed.toFixed(1)}s`;
+            }
+            
+            result.style.display = 'block';
+        }
+
+        function startProcessing() {
+            if (processing) return;
+            
+            processing = true;
+            updateStatus('Starte Analyse...', 'processing');
+            document.getElementById('result').style.display = 'none';
+            updateProgress(0, 8);
+            document.getElementById('stats').innerHTML = '';
+            
+            // Sende alle 500ms einen Frame
+            intervalId = setInterval(processFrame, 500);
+        }
+
+        function stopProcessing() {
+            processing = false;
+            clearInterval(intervalId);
+        }
+
+        async function resetSession() {
+            stopProcessing();
+            sessionId = Math.random().toString(36).substr(2, 9);
+            
+            try {
+                await fetch('/reset_session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+                
+                updateStatus('Bereit für neue Analyse');
+                updateProgress(0, 8);
+                document.getElementById('result').style.display = 'none';
+                document.getElementById('stats').innerHTML = '';
+            } catch (err) {
+                console.error('Reset-Fehler:', err);
+            }
+        }
+
+        // Event Listeners
+        document.getElementById('startBtn').addEventListener('click', startProcessing);
+        document.getElementById('resetBtn').addEventListener('click', resetSession);
+
+        // Initialisierung beim Laden
+        window.addEventListener('DOMContentLoaded', initCamera);
+    </script>
+</body>
+</html>
