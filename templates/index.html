@@ -113,6 +113,43 @@
             padding: 20px;
         }
 
+        /* Live Spoofing Anzeige oben links */
+        .spoofing-indicator {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: bold;
+            display: none;
+            z-index: 10;
+            border: 2px solid transparent;
+            backdrop-filter: blur(5px);
+        }
+
+        .spoofing-indicator.real {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.9);
+        }
+
+        .spoofing-indicator.fake {
+            border-color: #f44336;
+            background: rgba(244, 67, 54, 0.9);
+        }
+
+        .spoofing-indicator.warning {
+            border-color: #ff9800;
+            background: rgba(255, 152, 0, 0.9);
+        }
+
+        .spoofing-value {
+            font-size: 16px;
+            margin-top: 2px;
+        }
+
         .controls {
             display: flex;
             justify-content: center;
@@ -345,6 +382,11 @@
                         <div style="font-size: 14px; margin-top: 10px;">Bitte erlauben Sie den Kamerazugriff</div>
                     </div>
                 </div>
+                <!-- Live Spoofing Anzeige -->
+                <div class="spoofing-indicator" id="spoofingIndicator" style="display: none;">
+                    Echtzeit Spoofing-Überprüfung
+                    <div class="spoofing-value" id="spoofingValue"></div>
+                </div>
             </div>
 
             <div class="controls">
@@ -388,8 +430,9 @@
                                 <th>Frame</th>
                                 <th>Geschätztes Alter</th>
                                 <th>Altersbereich</th>
-                                <th>AI-Konfidenz</th>
                                 <th>Emotion</th>
+                                <th>Echtheit</th>
+                                <th>Spoofing-Score</th>
                                 <th>Zeitpunkt</th>
                             </tr>
                         </thead>
@@ -455,6 +498,8 @@
                 this.avgAge = document.getElementById('avgAge');
                 this.avgConfidence = document.getElementById('avgConfidence');
                 this.ageRange = document.getElementById('ageRange');
+                this.spoofingIndicator = document.getElementById('spoofingIndicator');
+                this.spoofingValue = document.getElementById('spoofingValue');
             }
 
             async initializeCameras() {
@@ -669,6 +714,9 @@
                     }
                     this.showStatus(message, 'processing');
                 }
+
+                // Live-Spoofing-Anzeige aktualisieren
+                this.updateSpoofingIndicator(result);
             }
 
             updateAnalysisTable(result) {
@@ -692,6 +740,8 @@
                             <td>${frame.age_range}</td>
                             <td class="${confidenceClass}"><strong>${frame.confidence}%</strong></td>
                             <td>${this.getEmotionIcon(frame.emotion)} ${frame.emotion}</td>
+                            <td>${this.getSpoofingDisplay(frame)}</td>
+                            <td>${this.getSpoofingScoreDisplay(frame)}</td>
                             <td>${frame.timestamp.toFixed(1)}s</td>
                         `;
 
@@ -701,6 +751,42 @@
                     // Zusammenfassung aktualisieren
                     this.updateSummaryStats(result.frame_details);
                     document.getElementById('analysisSummary').style.display = 'block';
+                }
+            }
+
+            updateSpoofingIndicator(result) {
+                // Zeige Live-Spoofing-Daten wenn verfügbar
+                if (result.live_spoofing) {
+                    this.spoofingIndicator.style.display = 'block';
+
+                    const { is_real, confidence_percent } = result.live_spoofing;
+
+                    // Bestimme Farbe und Text basierend auf Echtheit und Konfidenz
+                    let statusClass = '';
+                    let statusText = '';
+
+                    if (!is_real) {
+                        statusClass = 'fake';
+                        statusText = '❌ Spoofing';
+                    } else if (confidence_percent >= 80) {
+                        statusClass = 'real';
+                        statusText = '✅ Echt';
+                    } else if (confidence_percent >= 60) {
+                        statusClass = 'warning';
+                        statusText = '⚠️ Unsicher';
+                    } else {
+                        statusClass = 'fake';
+                        statusText = '❌ Verdächtig';
+                    }
+
+                    this.spoofingIndicator.className = `spoofing-indicator ${statusClass}`;
+                    this.spoofingIndicator.innerHTML = `
+                        ${statusText}
+                        <div class="spoofing-value">${confidence_percent}%</div>
+                    `;
+                } else {
+                    // Verstecke Anzeige wenn keine Daten verfügbar
+                    this.spoofingIndicator.style.display = 'none';
                 }
             }
 
@@ -721,6 +807,31 @@
                     'disgust': '🤢'
                 };
                 return icons[emotion] || '😐';
+            }
+
+            getSpoofingDisplay(frame) {
+                if (!frame.is_real) {
+                    return `❌ ${(frame.spoofing_confidence * 100).toFixed(1)}%`;
+                } else if (frame.spoofing_confidence > 0.8) {
+                    return `✅ ${(frame.spoofing_confidence * 100).toFixed(1)}%`;
+                } else if (frame.spoofing_confidence > 0.6) {
+                    return `⚠️ ${(frame.spoofing_confidence * 100).toFixed(1)}%`;
+                } else {
+                    return `❌ ${(frame.spoofing_confidence * 100).toFixed(1)}%`;
+                }
+            }
+
+            getSpoofingScoreDisplay(frame) {
+                const spoofingPercent = (frame.spoofing_confidence * 100).toFixed(1);
+
+                // Farbkodierung basierend auf Spoofing-Konfidenz
+                if (frame.spoofing_confidence > 0.8) {
+                    return `<span class="confidence-high">${spoofingPercent}%</span>`;
+                } else if (frame.spoofing_confidence > 0.6) {
+                    return `<span class="confidence-medium">${spoofingPercent}%</span>`;
+                } else {
+                    return `<span class="confidence-low">${spoofingPercent}%</span>`;
+                }
             }
 
             updateSummaryStats(frameDetails) {
