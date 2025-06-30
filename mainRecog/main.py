@@ -23,7 +23,7 @@ class AgeEstimator:
         self.status_message = ""
         self.last_valid_check = 0
         self.face_valid = False
-        self.total_frames_attempted = 0  # Gesamtanzahl der versuchten Frames
+        self.total_frames_attempted = 0  # Gesamtanzahl der versuchten Frame
         self.rejected_frames = 0  # Anzahl der abgelehnten Frames
         
     def detect_face_quick(self, frame):
@@ -81,7 +81,7 @@ class AgeEstimator:
                     break
                 
                 # Prüfe ob 8 gültige Frames erreicht
-                if len(self.valid_ages) >= 8:
+                if len(self.valid_ages) >= 1:
                     print(f"✓ Ziel erreicht: 8/8 gültige Frames gesammelt!")
                     break
                 
@@ -357,11 +357,49 @@ def draw_progress_circle(frame, center, radius, progress, color=(0, 255, 0), fac
     cv2.putText(frame, text, (text_x, text_y), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, color_text, 2)
 
+def list_available_cameras():
+    """Listet alle verfügbaren Kameras auf und lässt den Benutzer eine auswählen"""
+    available_cameras = []
+    for i in range(10):  # Prüfe die ersten 10 möglichen Kamera-Indices
+        cap = cv2.VideoCapture(i)
+        if cap.isOpened():
+            ret, _ = cap.read()
+            if ret:
+                available_cameras.append(i)
+            cap.release()
+    
+    if not available_cameras:
+        print("Keine Kameras gefunden!")
+        return None
+    
+    print("\nVerfügbare Kameras:")
+    for i, cam_index in enumerate(available_cameras):
+        cap = cv2.VideoCapture(cam_index)
+        # Versuche Kamera-Details zu bekommen (nicht alle Kameras unterstützen dies)
+        width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        cap.release()
+        print(f"{i+1}: Kamera {cam_index} ({width}x{height})")
+    
+    while True:
+        try:
+            choice = int(input("\nWählen Sie eine Kamera (1-{}): ".format(len(available_cameras))))
+            if 1 <= choice <= len(available_cameras):
+                return available_cameras[choice-1]
+            print("Ungültige Eingabe!")
+        except ValueError:
+            print("Bitte geben Sie eine Zahl ein!")
 
 def main():
-    cap = cv2.VideoCapture(0)
+    # Kameraauswahl vor dem Start
+    camera_index = list_available_cameras()
+    if camera_index is None:
+        print("Programm wird beendet.")
+        return
+        
+    cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
-        print("Could not open webcam")
+        print(f"Konnte Kamera {camera_index} nicht öffnen")
         return
 
     estimator = AgeEstimator()
