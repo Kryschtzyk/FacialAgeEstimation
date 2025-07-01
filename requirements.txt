@@ -1,5 +1,10 @@
 flask==2.3.3
-opencv-python==4.8.0
-deepface==0.0.79
+opencv-python==4.10.0.84
+deepface==0.0.93
 numpy==1.24.3
 pillow==10.0.0
+flask-socketio==5.3.6
+python-socketio==5.8.0
+eventlet==0.33.3
+tensorflow==2.15.0
+tf-keras==2.15.0

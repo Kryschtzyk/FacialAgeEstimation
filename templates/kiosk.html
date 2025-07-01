@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Altersschätzung - Kiosk</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .video-container {
+            position: relative;
+            width: 80%;
+            max-width: 800px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        }
+
+        #cameraFeed {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .status-message {
+            font-size: 2em;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+        }
+
+        .sub-message {
+            font-size: 1.2em;
+            opacity: 0.8;
+            max-width: 80%;
+        }
+
+        .progress-container {
+            margin-top: 30px;
+            width: 60%;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #27ae60, #2ecc71);
+            width: 0%;
+            transition: width 0.5s ease;
+            border-radius: 4px;
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+        }
+
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #27ae60, #2ecc71);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 15px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #e74c3c;
+            transition: background 0.3s;
+        }
+
+        .status-dot.connected {
+            background: #27ae60;
+        }
+
+        .camera-preview {
+            display: none;
+        }
+
+        .analysis-active .camera-preview {
+            display: block;
+        }
+
+        .analysis-active .overlay {
+            background: rgba(0, 0, 0, 0.4);
+        }
+
+        /* Animationen */
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.6; }
+            100% { opacity: 1; }
+        }
+
+        .pulsing {
+            animation: pulse 2s infinite;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .status-message {
+                font-size: 1.5em;
+            }
+
+            .video-container {
+                width: 95%;
+            }
+
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎥 Altersverifikation</h1>
+        <p>Automatische Altersschätzung für Kassensystem</p>
+    </div>
+
+    <div class="connection-status">
+        <div class="status-dot" id="connectionDot"></div>
+        <span id="connectionText">Verbinde...</span>
+    </div>
+
+    <div class="main-content">
+        <div class="video-container">
+            <img id="cameraFeed" class="camera-preview" alt="Kamera Feed">
+            <div class="overlay" id="overlay">
+                <div class="status-message" id="statusMessage">System wird initialisiert...</div>
+                <div class="sub-message" id="subMessage">Bitte warten Sie einen Moment</div>
+                <div class="progress-container" id="progressContainer" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button class="btn btn-primary" id="startBtn" disabled>Analyse starten</button>
+        <button class="btn btn-secondary" id="stopBtn" disabled>Stoppen</button>
+    </div>
+
+    <script>
+        class KioskAgeEstimation {
+            constructor() {
+                this.socket = io();
+                this.sessionId = this.generateSessionId();
+                this.isAnalyzing = false;
+                this.frameCount = 0;
+
+                this.initializeElements();
+                this.bindSocketEvents();
+                this.bindUIEvents();
+            }
+
+            initializeElements() {
+                this.connectionDot = document.getElementById('connectionDot');
+                this.connectionText = document.getElementById('connectionText');
+                this.cameraFeed = document.getElementById('cameraFeed');
+                this.overlay = document.getElementById('overlay');
+                this.statusMessage = document.getElementById('statusMessage');
+                this.subMessage = document.getElementById('subMessage');
+                this.progressContainer = document.getElementById('progressContainer');
+                this.progressFill = document.getElementById('progressFill');
+                this.startBtn = document.getElementById('startBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+            }
+
+            bindSocketEvents() {
+                this.socket.on('connect', () => {
+                    this.updateConnectionStatus(true);
+                    this.updateStatus('System bereit', 'Drücken Sie "Analyse starten" um zu beginnen');
+                    this.startBtn.disabled = false;
+
+                    // Kamera automatisch starten
+                    this.socket.emit('start_camera');
+                });
+
+                this.socket.on('disconnect', () => {
+                    this.updateConnectionStatus(false);
+                    this.updateStatus('Verbindung verloren', 'Versuche erneut zu verbinden...');
+                    this.startBtn.disabled = true;
+                    this.stopBtn.disabled = true;
+                });
+
+                this.socket.on('camera_frame', (data) => {
+                    this.cameraFeed.src = data.image;
+                });
+
+                this.socket.on('camera_status', (data) => {
+                    if (data.status === 'started') {
+                        document.body.classList.add('analysis-active');
+                    } else if (data.status === 'error') {
+                        this.updateStatus('Kamera-Fehler', data.message);
+                    }
+                });
+
+                this.socket.on('analysis_result', (data) => {
+                    this.handleAnalysisResult(data);
+                });
+
+                this.socket.on('session_reset', () => {
+                    this.frameCount = 0;
+                    this.updateProgress(0);
+                });
+            }
+
+            bindUIEvents() {
+                this.startBtn.addEventListener('click', () => {
+                    this.startAnalysis();
+                });
+
+                this.stopBtn.addEventListener('click', () => {
+                    this.stopAnalysis();
+                });
+            }
+
+            updateConnectionStatus(connected) {
+                if (connected) {
+                    this.connectionDot.classList.add('connected');
+                    this.connectionText.textContent = 'Verbunden';
+                } else {
+                    this.connectionDot.classList.remove('connected');
+                    this.connectionText.textContent = 'Getrennt';
+                }
+            }
+
+            updateStatus(message, subMessage = '') {
+                this.statusMessage.textContent = message;
+                this.subMessage.textContent = subMessage;
+
+                // Pulsing-Effekt für wichtige Nachrichten
+                if (message.includes('Schauen') || message.includes('Position')) {
+                    this.statusMessage.classList.add('pulsing');
+                } else {
+                    this.statusMessage.classList.remove('pulsing');
+                }
+            }
+
+            updateProgress(percentage) {
+                this.progressFill.style.width = percentage + '%';
+
+                if (percentage > 0) {
+                    this.progressContainer.style.display = 'block';
+                } else {
+                    this.progressContainer.style.display = 'none';
+                }
+            }
+
+            startAnalysis() {
+                this.isAnalyzing = true;
+                this.startBtn.disabled = true;
+                this.stopBtn.disabled = false;
+                this.frameCount = 0;
+
+                this.updateStatus('Analyse gestartet', 'Schauen Sie direkt in die Kamera');
+                this.socket.emit('start_analysis', { session_id: this.sessionId });
+
+                // Frame-Verarbeitung alle 500ms
+                this.analysisInterval = setInterval(() => {
+                    if (this.isAnalyzing && this.cameraFeed.src) {
+                        this.captureAndSendFrame();
+                    }
+                }, 500);
+            }
+
+            stopAnalysis() {
+                this.isAnalyzing = false;
+                this.startBtn.disabled = false;
+                this.stopBtn.disabled = true;
+
+                if (this.analysisInterval) {
+                    clearInterval(this.analysisInterval);
+                }
+
+                this.updateStatus('Analyse gestoppt', 'Drücken Sie "Analyse starten" um erneut zu beginnen');
+                this.updateProgress(0);
+
+                // Session zurücksetzen
+                this.socket.emit('reset_session', { session_id: this.sessionId });
+                this.sessionId = this.generateSessionId();
+            }
+
+            captureAndSendFrame() {
+                // Canvas erstellen um aktuellen Frame zu erfassen
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+
+                canvas.width = this.cameraFeed.naturalWidth || 640;
+                canvas.height = this.cameraFeed.naturalHeight || 480;
+
+                ctx.drawImage(this.cameraFeed, 0, 0);
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+
+                this.socket.emit('process_frame', {
+                    image: imageData,
+                    session_id: this.sessionId
+                });
+            }
+
+            handleAnalysisResult(data) {
+                switch (data.status) {
+                    case 'processing':
+                        this.updateStatus(data.customer_message, 'Bitte bleiben Sie ruhig stehen');
+                        const progress = (data.frames_collected / 8) * 100;
+                        this.updateProgress(progress);
+                        break;
+
+                    case 'invalid':
+                        this.updateStatus(data.customer_message, 'Bitte korrigieren Sie Ihre Position');
+                        break;
+
+                    case 'complete':
+                        this.stopAnalysis();
+                        this.updateStatus('✅ Analyse abgeschlossen', `Geschätztes Alter: ${data.age} Jahre`);
+                        this.updateProgress(100);
+
+                        // Nach 5 Sekunden automatisch zurücksetzen
+                        setTimeout(() => {
+                            this.updateStatus('System bereit', 'Drücken Sie "Analyse starten" um zu beginnen');
+                            this.updateProgress(0);
+                        }, 5000);
+                        break;
+
+                    case 'error':
+                        this.updateStatus('❌ Technischer Fehler', data.customer_message);
+                        this.stopAnalysis();
+                        break;
+                }
+            }
+
+            generateSessionId() {
+                return Date.now().toString(36) + Math.random().toString(36).substr(2);
+            }
+        }
+
+        // App initialisieren
+        document.addEventListener('DOMContentLoaded', () => {
+            new KioskAgeEstimation();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  age-estimation:
+    build: .
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./logs:/app/logs
+    # Host-Netzwerk für bessere Verbindung zum Mac
+    network_mode: "host"  # Für Linux
+    environment:
+      - PYTHONPATH=/app
+      - FLASK_ENV=production
+      - MAC_CAMERA_HOST=192.168.178.155
+      - MAC_CAMERA_PORT=5002
+    restart: unless-stopped
+    # Host-DNS-Einträge für Windows/Mac
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+      - "mac-host:192.168.178.155"
