@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  linux-camera:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: linux-camera-server:latest  # Expliziter Image-Name
+    ports:
+      - "5002:5002"
+    volumes:
+      # Kamera-Geräte auf dem Host-System einbinden
+      - /dev/video0:/dev/video0
+      # Bei Bedarf weitere Kamera-Geräte einbinden
+      # - /dev/video1:/dev/video1
+    environment:
+      - CAMERA_PORT=5002
+      - CAMERA_DEVICE=0  # Kann auch ein Pfad sein wie "/dev/video0"
+    # Privilegierte Rechte für Kamerazugriff
+    privileged: true
+    restart: unless-stopped
